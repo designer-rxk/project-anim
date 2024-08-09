@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Responsive Ballpit Simulation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pathseg/1.2.0/pathseg.min.js"></script>
+    <style>body {
+        margin: 0;
+        height: 200vh; /* Ensure there's enough space to scroll */
+      }
+
+      .canvas-container {
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .content {
+        position: relative;
+        z-index: 1;
+        color: #000;
+      }</style>
+  </head>
+  <body>
+    <div class="canvas-container">
+      <canvas id="world"></canvas>
+    </div>
+    <div class="content">
+      <div style="height: 2000px; background: #ff7b42">
+        More content here...
+      </div>
+    </div>
+    <script src="/src.f10117fe.js"></script>
+  </body>
+</html>

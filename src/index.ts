@@ -19,6 +19,7 @@ const initAnimation = () => {
     Svg,
     Bodies,
     Vector,
+    Collision,
   } = Matter;
 
   // Provide concave decomposition support library
@@ -71,15 +72,21 @@ const initAnimation = () => {
     const svgPaths = ["./letters/T.svg", "./letters/R.svg", "./letters/Y.svg"];
     const loadedVertexSets = [];
 
-    const loadAllSvgs = () => {
-      return Promise.all(svgPaths.map(loadSvg)).then((roots) => {
-        roots.forEach((root) => {
-          const vertexSets = select(root, "path").map((path) =>
-            Vertices.scale(Svg.pathToVertices(path, 0), 1, 1)
-          );
+    const loadAllSvgs = async () => {
+      const promises = svgPaths.map(async (path) => {
+        const svg = await loadSvg(path);
+        const vertexSets = select(svg, "path").map((pathElement) =>
+          Vertices.scale(Svg.pathToVertices(pathElement, 0), 1, 1)
+        );
+
+        if (vertexSets.length > 0) {
           loadedVertexSets.push(vertexSets);
-        });
+        } else {
+          console.warn(`No valid paths found in SVG: ${path}`);
+        }
       });
+
+      await Promise.all(promises);
     };
 
     const spawnLetters = (totalLetters: number, spawnInterval: number) => {
@@ -89,11 +96,11 @@ const initAnimation = () => {
       const spacing = 75; // Space between each letter
       const viewportWidth = window.innerWidth;
       const spawnAreaWidth = viewportWidth * 0.6; // 60% of the viewport width
-      const startX = viewportWidth - spawnAreaWidth; // Start X position for the rightmost 60%
+      const startX = viewportWidth - spawnAreaWidth - 40; // Start X position for the rightmost 60%
       const maxHeightAboveViewport = 50; // Maximum height above the viewport
       const gridSize = spacing; // Size of each grid cell
       const occupiedGridCells = new Set<string>(); // To track occupied grid cells
-      const maxAttempts = 100; // Max attempts to find a unique position
+      const maxAttempts = 25; // Max attempts to find a unique position
 
       let lettersSpawnedCount = 0;
 
@@ -106,7 +113,7 @@ const initAnimation = () => {
             startX +
             Math.floor((Math.random() * spawnAreaWidth) / gridSize) * gridSize;
           const y =
-            -20 +
+            -100 +
             Math.floor((Math.random() * maxHeightAboveViewport) / gridSize) *
               gridSize;
           const gridKey = `${Math.floor(x / gridSize)},${Math.floor(
@@ -125,8 +132,20 @@ const initAnimation = () => {
         // Return a default position if no unique position is found after max attempts
         return {
           x: startX + Math.random() * spawnAreaWidth,
-          y: -20 + Math.random() * maxHeightAboveViewport,
+          y: -100 + Math.random() * maxHeightAboveViewport,
         };
+      };
+
+      // Function to check if a body overlaps with any other bodies in the world
+      const doesOverlap = (newBody) => {
+        const bodies = Composite.allBodies(engine.world);
+        for (let i = 0; i < bodies.length; i++) {
+          const collision = Collision.collides(newBody, bodies[i]);
+          if (collision && collision.collided) {
+            return true;
+          }
+        }
+        return false;
       };
 
       // Function to spawn a letter
@@ -137,12 +156,15 @@ const initAnimation = () => {
         const randomIndex = Math.floor(Math.random() * loadedVertexSets.length);
         const vertexSets = loadedVertexSets[randomIndex];
 
-        const { x, y } = getUniquePosition(); // Get a unique position
+        let newLetterBody;
+        let positionFound = false;
 
-        const color = Common.choose(["#CF6337"]);
-        Composite.add(
-          world,
-          Bodies.fromVertices(
+        // Try to find a position where the new letter does not overlap with existing bodies
+        for (let i = 0; i < maxAttempts && !positionFound; i++) {
+          const { x, y } = getUniquePosition(); // Get a unique position
+          const color = Common.choose(["#CF6337"]);
+
+          newLetterBody = Bodies.fromVertices(
             x,
             y,
             vertexSets,
@@ -154,10 +176,22 @@ const initAnimation = () => {
               },
             },
             true
-          )
-        );
+          );
 
-        lettersSpawnedCount++;
+          // Apply a random rotation to the new letter
+          const randomAngle = Math.random() * 2 * Math.PI; // Random angle between 0 and 2π radians
+          Matter.Body.rotate(newLetterBody, randomAngle);
+
+          // Check if the new letter overlaps with any existing bodies
+          if (!doesOverlap(newLetterBody)) {
+            positionFound = true;
+          }
+        }
+
+        if (positionFound) {
+          Composite.add(world, newLetterBody);
+          lettersSpawnedCount++;
+        }
 
         if (lettersSpawnedCount >= totalLetters) {
           clearInterval(spawnIntervalId); // Stop the interval when enough letters are spawned
@@ -169,7 +203,7 @@ const initAnimation = () => {
 
     // Load SVGs and spawn letters after loading
     loadAllSvgs().then(() => {
-      spawnLetters(200, 50); // Spawn a total of 200 letters with a 100ms interval between each
+      spawnLetters(200, 25); // Spawn a total of 200 letters with a 25ms interval between each
     });
 
     let scrollTimeout;
@@ -196,23 +230,22 @@ const initAnimation = () => {
       }
 
       // Create new boundaries
-      ground = Bodies.rectangle(width / 2, height + 5, width, 50, {
+      ground = Bodies.rectangle(-100, height + 50, width * 4, 100, {
         isStatic: true,
         render: { visible: false },
       });
-      leftWall = Bodies.rectangle(-5, height / 2, 20, height, {
+      leftWall = Bodies.rectangle(-50, height / 2, 100, height * 2, {
         isStatic: true,
         render: { visible: false },
       });
-      rightWall = Bodies.rectangle(width - 5, height / 2, 20, height, {
+      rightWall = Bodies.rectangle(width + 15, height / 2, 100, height * 2, {
         isStatic: true,
         render: { visible: false },
       });
 
-      // Add a box at the top to prevent balls from flying away
-      topBox = Bodies.rectangle(width / 2, -20, width, 40, {
+      topBox = Bodies.rectangle(-100, -160, width * 42, 100, {
         isStatic: true,
-        render: { visible: false },
+        // render: { visible: false },
       });
 
       // Add boundaries to the world
@@ -221,11 +254,6 @@ const initAnimation = () => {
 
     // Initial creation of boundaries
     createBoundaries();
-
-    // Load SVGs and spawn letters after loading
-    loadAllSvgs().then(() => {
-      spawnLetters(200);
-    });
 
     // Add mouse control
     const mouse = Mouse.create(render.canvas);
@@ -272,14 +300,24 @@ const initAnimation = () => {
     };
 
     // Push letters upwards on scroll
+    let previousScrollY = 0;
+
     const pushLettersUpwards = () => {
-      const scrollY = window.scrollY;
-      Composite.allBodies(engine.world).forEach((body) => {
-        const forceMagnitude = 0.00005 * scrollY; // Adjust force magnitude as needed
-        const force = { x: 0, y: -forceMagnitude };
-        Matter.Body.applyForce(body, body.position, force);
-      });
+      const currentScrollY = window.scrollY;
+
+      if (currentScrollY > previousScrollY) {
+        const scrollDelta = currentScrollY - previousScrollY;
+        Composite.allBodies(engine.world).forEach((body) => {
+          const forceMagnitude = 0.0005 * scrollDelta; // Adjust force magnitude as needed
+          const force = { x: 0, y: -forceMagnitude };
+          Matter.Body.applyForce(body, body.position, force);
+        });
+      }
+
+      previousScrollY = currentScrollY;
     };
+
+    window.addEventListener("scroll", pushLettersUpwards);
 
     // Add scroll event listener
     window.addEventListener("scroll", () => {
